@@ -57,6 +57,8 @@ The plugin auto-detects Homebrew bash at `/opt/homebrew/bin/bash`.
 
 ### 6. Optional: Claude Code statusline mirror
 
+> The tmux config is agent-harness agnostic. If you skip this section, the center of the status bar is blank and no errors are printed — every other feature (splits, copy mode, resurrect, vim-tmux-navigator, etc.) works untouched. The `for` loop in `window-status-current-format` will pick up any executable statusline dropped at one of its candidate paths; add more paths there if you use Codex, Aider, etc.
+
 The status bar centers `cc-statusline` output — model, context %, 5h/7d quota, session cost. That requires two Claude Code hooks:
 
 **a. Wrapper that captures cc-statusline for tmux:**
