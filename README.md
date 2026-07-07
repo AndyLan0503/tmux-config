@@ -55,59 +55,59 @@ brew install bash
 
 The plugin auto-detects Homebrew bash at `/opt/homebrew/bin/bash`.
 
-### 6. Optional: Claude Code statusline mirror
+### 6. Optional: agent-harness statusline
 
-> The tmux config is agent-harness agnostic. If you skip this section, the center of the status bar is blank and no errors are printed — every other feature (splits, copy mode, resurrect, vim-tmux-navigator, etc.) works untouched. The `for` loop in `window-status-current-format` will pick up any executable statusline dropped at one of its candidate paths; add more paths there if you use Codex, Aider, etc.
+> The tmux config is agent-harness agnostic. If you skip this whole section, the center of the status bar is blank and no errors are printed — every other feature (splits, copy mode, resurrect, vim-tmux-navigator, etc.) works untouched.
 
-The status bar centers `cc-statusline` output — model, context %, 5h/7d quota, session cost. That requires two Claude Code hooks:
+#### How it works
 
-**a. Wrapper that captures cc-statusline for tmux:**
+Every 5 seconds, tmux runs `scripts/tmux-agent.sh`, which scans `$TMPDIR/agent-cache-*.out` for the freshest file written in the last 60s. That file's line 1 (ANSI stripped) becomes the centered status.
 
-Create `~/.claude/cc-statusline-wrapper.sh`:
+Each agent has its own writer script that populates its cache file. Whichever agent last wrote wins the center. If no agent has written recently, the center is blank.
 
-```bash
-#!/bin/bash
-set -euo pipefail
-OUT_FILE="${TMPDIR:-/tmp}/cc-statusline.out"
-npx -y @dartchuk-s/cc-statusline@latest | tee "$OUT_FILE"
-```
+#### Claude Code (push-driven)
 
-**b. Reader that strips ANSI and hides stale output:**
+Claude Code has a native `statusLine` hook. Point it at `scripts/claude-statusline.sh`, which wraps [`cc-statusline`](https://www.npmjs.com/package/@dartchuk-s/cc-statusline) and tees output to the cache.
 
-Create `~/.claude/cc-statusline-tmux.sh`:
-
-```bash
-#!/bin/bash
-set -euo pipefail
-FILE="${TMPDIR:-/tmp}/cc-statusline.out"
-[[ -s $FILE ]] || exit 0
-if [[ "$(find "$FILE" -mmin -1 2>/dev/null)" == "" ]]; then
-  exit 0
-fi
-line=$(head -1 "$FILE")
-printf '%s' "$line" | sed $'s/\x1b\\[[0-9;]*[a-zA-Z]//g'
-```
-
-Make both executable:
-
-```bash
-chmod +x ~/.claude/cc-statusline-{wrapper,tmux}.sh
-```
-
-Wire the wrapper into `~/.claude/settings.json`:
+Edit `~/.claude/settings.json`:
 
 ```json
 {
   "statusLine": {
     "type": "command",
-    "command": "~/.claude/cc-statusline-wrapper.sh",
+    "command": "~/repos/tmux-config/scripts/claude-statusline.sh",
     "padding": 0,
     "refreshInterval": 10
   }
 }
 ```
 
-If you skip this step the center of the status bar will simply be empty — everything else still works.
+You'll see `Model | Ctx | 5h | 7d | $cost · duration` in the tmux bar on Claude's next render. `npx` fetches `cc-statusline` the first time; nothing else to install.
+
+#### Codex CLI (scaffold, poll-driven)
+
+Codex doesn't yet expose a native statusLine hook, so `scripts/codex-statusline.sh` starts as a **scaffold**: it detects a running `codex` process and writes `"Codex: active"` to its cache. Two ways to run it:
+
+**a. Manual / cron.** Add to your crontab (or a shell one-liner background loop):
+
+```
+* * * * * ~/repos/tmux-config/scripts/codex-statusline.sh
+```
+
+**b. Codex hook (once Codex supports it).** Enable in `~/.codex/config.toml`:
+
+```toml
+[features]
+hooks = true
+```
+
+Then wire whichever hook Codex ships to point at the script.
+
+The script has explicit TODO comments for filling in real session data (model, context %, quota) once Codex exposes it — for now it's a bare "active" indicator so you can verify the plumbing works.
+
+#### Adding more agents
+
+Drop a `scripts/<agent>-statusline.sh` that writes to `$TMPDIR/agent-cache-<agent>.out`. `tmux-agent.sh` picks it up automatically — no tmux.conf changes needed.
 
 ### 7. Start (or reload) tmux
 
